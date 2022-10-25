@@ -2,781 +2,725 @@
 
 namespace Leafpoda\Utils\Tests;
 
+use ArrayIterator;
+use ArrayObject;
+use Leafpoda\Utils\Arr;
 use Leafpoda\Utils\Date;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 class ArrTest extends TestCase
 {
-    protected $_original_timezone = NULL;
-    protected $default_locale;
-
-
-    /**
-     * Ensures we have a consistant timezone for testing.
-     */
-    // @codingStandardsIgnoreStart
-    public function setUp(): void
-        // @codingStandardsIgnoreEnd
+    public function testDateCanFormat()
     {
-        parent::setUp();
-        $this->_original_timezone = date_default_timezone_get();
-        $this->default_locale = setlocale(LC_ALL, 0);
+        $minute = 60;
+        $this->assertTrue(Date::MINUTE == $minute);
 
-        date_default_timezone_set('America/Chicago');
-        setlocale(LC_ALL, 'en_US.utf8');
+        $stack = [];
+        $this->assertEquals(0, count($stack));
+
+        array_push($stack, 'foo');
+        $this->assertEquals('foo', $stack[count($stack)-1]);
+        $this->assertEquals(1, count($stack));
+
+        $this->assertEquals('foo', array_pop($stack));
+        $this->assertEquals(0, count($stack));
     }
 
-    /**
-     * Restores original timezone after testing.
-     */
-    // @codingStandardsIgnoreStart
-    public function tearDown(): void
-        // @codingStandardsIgnoreEnd
-    {
-
-        date_default_timezone_set($this->_original_timezone);
-        setlocale(LC_ALL, $this->default_locale);
-
-        parent::tearDown();
-    }
 
     /**
-     * Provides test data for test_offset()
+     * Provides test data for test_callback()
      *
      * @return array
      */
-    public function provider_offset()
+    public function provider_callback()
     {
         return [
-            [30600, 'Asia/Calcutta', 'America/Argentina/Buenos_Aires'],
+            // Tests....
+            // That no parameters returns null
+            ['function', ['function', NULL]],
+            // That we can get an array of parameters values
+            ['function(1,2,3)', ['function', ['1', '2', '3']]],
+            // That it's not just using the callback "function"
+            ['different_name(harry,jerry)', ['different_name', ['harry', 'jerry']]],
+            // That static callbacks are parsed into arrays
+            ['kohana::appify(this)', [['kohana', 'appify'], ['this']]],
+            // Spaces are preserved in parameters
+            ['deal::make(me, my mate )', [['deal', 'make'], ['me', ' my mate ']]]
+            // TODO: add more cases
         ];
     }
 
     /**
-     * Tests Date::offset()
+     * Tests \Leafpoda\Utils\Arr::callback()
      *
      * @test
-     * @dataProvider provider_offset
-     * @param integer $expected Expected offset
-     * @param string $remote Remote TZ
-     * @param string $local Local TZ
-     * @param integer $now Current timestamp
+     * @dataProvider provider_callback
+     * @param string $str String to parse
+     * @param array $expected Callback and its parameters
      */
-    public function testOffset($expected, $remote, $local, $now = NULL)
+    public function test_callback($str, $expected)
     {
-        $this->assertSame($expected, Date::offset($remote, $local, $now));
+        $result = Arr::callback($str);
+
+        $this->assertSame(2, count($result));
+        $this->assertSame($expected, $result);
     }
 
+
     /**
-     * Provides test data for test_date()
+     * Provides test data for test_extract
      *
      * @return array
      */
-    public function provider_am_pm()
+    public function provider_extract()
     {
         return [
-            // All possible values
-            [0, 'AM'],
-            [1, 'AM'],
-            [2, 'AM'],
-            [3, 'AM'],
-            [4, 'AM'],
-            [5, 'AM'],
-            [6, 'AM'],
-            [7, 'AM'],
-            [8, 'AM'],
-            [9, 'AM'],
-            [10, 'AM'],
-            [11, 'AM'],
-            [12, 'PM'],
-            [13, 'PM'],
-            [14, 'PM'],
-            [15, 'PM'],
-            [16, 'PM'],
-            [17, 'PM'],
-            [18, 'PM'],
-            [19, 'PM'],
-            [20, 'PM'],
-            [21, 'PM'],
-            [22, 'PM'],
-            [23, 'PM'],
-            [24, 'PM'],
-            ['0', 'AM'],
-            ['12', 'PM'],
+            [
+                ['kohana' => 'awesome', 'blueflame' => 'was'],
+                ['kohana', 'cakephp', 'symfony'],
+                NULL,
+                ['kohana' => 'awesome', 'cakephp' => NULL, 'symfony' => NULL]
+            ],
+            // I realise noone should EVER code like this in real life,
+            // but unit testing is very very very very boring
+            [
+                ['chocolate cake' => 'in stock', 'carrot cake' => 'in stock'],
+                ['carrot cake', 'humble pie'],
+                'not in stock',
+                ['carrot cake' => 'in stock', 'humble pie' => 'not in stock'],
+            ],
+            [
+                // Source Array
+                ['level1' => ['level2a' => 'value 1', 'level2b' => 'value 2']],
+                // Paths to extract
+                ['level1.level2a', 'level1.level2b'],
+                // Default
+                NULL,
+                // Expected Result
+                ['level1' => ['level2a' => 'value 1', 'level2b' => 'value 2']],
+            ],
+            [
+                // Source Array
+                ['level1a' => ['level2a' => 'value 1'], 'level1b' => ['level2b' => 'value 2']],
+                // Paths to extract
+                ['level1a', 'level1b.level2b'],
+                // Default
+                NULL,
+                // Expected Result
+                ['level1a' => ['level2a' => 'value 1'], 'level1b' => ['level2b' => 'value 2']],
+            ],
+            [
+                // Source Array
+                ['level1a' => ['level2a' => 'value 1'], 'level1b' => ['level2b' => 'value 2']],
+                // Paths to extract
+                ['level1a', 'level1b.level2b', 'level1c', 'level1d.notfound'],
+                // Default
+                'default',
+                // Expected Result
+                ['level1a' => ['level2a' => 'value 1'], 'level1b' => ['level2b' => 'value 2'], 'level1c' => 'default', 'level1d' => ['notfound' => 'default']],
+            ],
         ];
     }
 
     /**
-     * Tests \Leafpoda\Utils\Date::ampm()
+     * Tests \Leafpoda\Utils\Arr::extract()
      *
      * @test
-     * @covers       \Leafpoda\Utils\Date::ampm
-     * @dataProvider provider_am_pm
-     * @param $hour
-     * @param $expected
+     * @dataProvider provider_extract
+     * @param array $array
+     * @param array $paths
+     * @param mixed $default
+     * @param array $expected
      */
-    public function testAmPm($hour, $expected)
+    public function test_extract(array $array, array $paths, $default, $expected)
+    {
+        $array = Arr::extract($array, $paths, $default);
+
+        $this->assertSame(count($expected), count($array));
+        $this->assertSame($expected, $array);
+    }
+
+    /**
+     * Provides test data for test_pluck
+     *
+     * @return array
+     */
+    public function provider_pluck()
+    {
+        return [
+            [
+                [
+                    ['id' => 20, 'name' => 'John Smith'],
+                    ['name' => 'Linda'],
+                    ['id' => 25, 'name' => 'Fred'],
+                ],
+                'id',
+                [20, 25]
+            ],
+        ];
+    }
+
+    /**
+     * Tests \Leafpoda\Utils\Arr::pluck()
+     *
+     * @test
+     * @dataProvider provider_pluck
+     * @param array $array
+     * @param string $key
+     * @param array $expected
+     */
+    public function test_pluck(array $array, $key, $expected)
+    {
+        $array = Arr::pluck($array, $key);
+
+        $this->assertSame(count($expected), count($array));
+        $this->assertSame($expected, $array);
+    }
+
+    /**
+     * Provides test data for test_get()
+     *
+     * @return array
+     */
+    public function provider_get()
+    {
+        return [
+            [['uno', 'dos', 'tress'], 1, NULL, 'dos'],
+            [['we' => 'can', 'make' => 'change'], 'we', NULL, 'can'],
+
+            [['uno', 'dos', 'tress'], 10, NULL, NULL],
+            [['we' => 'can', 'make' => 'change'], 'he', NULL, NULL],
+            [['we' => 'can', 'make' => 'change'], 'he', 'who', 'who'],
+            [['we' => 'can', 'make' => 'change'], 'he', ['arrays'], ['arrays']],
+        ];
+    }
+
+    /**
+     * Tests \Leafpoda\Utils\Arr::get()
+     *
+     * @test
+     * @dataProvider provider_get()
+     * @param array $array Array to look in
+     * @param string|integer $key Key to look for
+     * @param mixed $default What to return if $key isn't set
+     * @param mixed $expected The expected value returned
+     */
+    public function test_get(array $array, $key, $default, $expected)
     {
         $this->assertSame(
             $expected,
-            Date::ampm($hour)
+            Arr::get($array, $key, $default)
         );
     }
 
     /**
-     * Provides test data for test_adjust()
+     * Provides test data for test_is_assoc()
      *
      * @return array
      */
-    public function provider_adjust()
+    public function provider_is_assoc()
     {
         return [
-            // Might as well test all possibilities
-            [1, 'am', '01'],
-            [2, 'am', '02'],
-            [3, 'am', '03'],
-            [4, 'am', '04'],
-            [5, 'am', '05'],
-            [6, 'am', '06'],
-            [7, 'am', '07'],
-            [8, 'am', '08'],
-            [9, 'am', '09'],
-            [10, 'am', '10'],
-            [11, 'am', '11'],
-            [12, 'am', '00'],
-            [1, 'pm', '13'],
-            [2, 'pm', '14'],
-            [3, 'pm', '15'],
-            [4, 'pm', '16'],
-            [5, 'pm', '17'],
-            [6, 'pm', '18'],
-            [7, 'pm', '19'],
-            [8, 'pm', '20'],
-            [9, 'pm', '21'],
-            [10, 'pm', '22'],
-            [11, 'pm', '23'],
-            [12, 'pm', '12'],
-            // It should also work with strings instead of ints
-            ['10', 'pm', '22'],
-            ['10', 'am', '10'],
+            [['one', 'two', 'three'], FALSE],
+            [['one' => 'o clock', 'two' => 'o clock', 'three' => 'o clock'], TRUE],
         ];
     }
 
     /**
-     * Tests \Leafpoda\Utils\Date::ampm()
+     * Tests \Leafpoda\Utils\Arr::is_assoc()
      *
      * @test
-     * @dataProvider provider_adjust
-     * @param integer $hour Hour in 12 hour format
-     * @param string $ampm Either am or pm
-     * @param string $expected Expected result
+     * @dataProvider provider_is_assoc
+     * @param array $array Array to check
+     * @param boolean $expected Is $array assoc
      */
-    public function test_adjust($hour, $ampm, $expected)
+    public function test_is_assoc(array $array, $expected)
     {
         $this->assertSame(
             $expected,
-            Date::adjust($hour, $ampm)
+            Arr::is_assoc($array)
         );
     }
 
     /**
-     * Provides test data for test_days()
+     * Provides test data for test_is_array()
      *
      * @return array
      */
-    public function provider_days()
+    public function provider_is_array()
     {
         return [
-            // According to "the rhyme" these should be the same every year
-            [9, FALSE, 30],
-            [4, FALSE, 30],
-            [6, FALSE, 30],
-            [11, FALSE, 30],
-            [1, FALSE, 31],
-            [3, FALSE, 31],
-            [5, FALSE, 31],
-            [7, FALSE, 31],
-            [8, FALSE, 31],
-            [10, FALSE, 31],
-            // February is such a pain
-            [2, 2001, 28],
-            [2, 2000, 29],
-            [2, 2012, 29],
+            [$a = ['one', 'two', 'three'], TRUE],
+            [new ArrayObject($a), TRUE],
+            [new ArrayIterator($a), TRUE],
+            ['not an array', FALSE],
+            [new stdClass, FALSE],
         ];
     }
 
     /**
-     * Tests \Leafpoda\Utils\Date::DAYs()
+     * Tests \Leafpoda\Utils\Arr::is_array()
      *
      * @test
-     * @covers       \Leafpoda\Utils\Date::DAYs
-     * @dataProvider provider_days
-     * @param integer $month
-     * @param integer $year
-     * @param integer $expected
+     * @dataProvider provider_is_array
+     * @param mixed $value Value to check
+     * @param boolean $expected Is $value an array?
      */
-    public function test_days($month, $year, $expected)
+    public function test_is_array($array, $expected)
     {
-        $days = Date::DAYs($month, $year);
-
         $this->assertSame(
             $expected,
-            count($days)
+            Arr::is_array($array)
         );
+    }
 
-        // This should be a mirrored array, days => days
-        for ($i = 1; $i <= $expected; ++$i) {
-            $this->assertArrayHasKey($i, $days);
-            // Combining the type check into this saves about 400-500 assertions!
-            $this->assertSame((string)$i, $days[$i]);
+    public function provider_merge()
+    {
+        return [
+            // Test how it merges arrays and sub arrays with assoc keys
+            [
+                ['name' => 'mary', 'children' => ['fred', 'paul', 'sally', 'jane']],
+                ['name' => 'john', 'children' => ['fred', 'paul', 'sally', 'jane']],
+                ['name' => 'mary', 'children' => ['jane']],
+            ],
+            // See how it merges sub-arrays with numerical indexes
+            [
+                [['test1'], ['test2'], ['test3']],
+                [['test1'], ['test2']],
+                [['test2'], ['test3']],
+            ],
+            [
+                [[['test1']], [['test2']], [['test3']]],
+                [[['test1']], [['test2']]],
+                [[['test2']], [['test3']]],
+            ],
+            [
+                ['a' => ['test1', 'test2'], 'b' => ['test2', 'test3']],
+                ['a' => ['test1'], 'b' => ['test2']],
+                ['a' => ['test2'], 'b' => ['test3']],
+            ],
+            [
+                ['digits' => [0, 1, 2, 3]],
+                ['digits' => [0, 1]],
+                ['digits' => [2, 3]],
+            ],
+            // See how it manages merging items with numerical indexes
+            [
+                [0, 1, 2, 3],
+                [0, 1],
+                [2, 3],
+            ],
+            // Try and get it to merge assoc. arrays recursively
+            [
+                ['foo' => 'bar', ['temp' => 'life']],
+                ['foo' => 'bin', ['temp' => 'name']],
+                ['foo' => 'bar', ['temp' => 'life']],
+            ],
+            // Bug #3139
+            [
+                ['foo' => ['bar']],
+                ['foo' => 'bar'],
+                ['foo' => ['bar']],
+            ],
+            [
+                ['foo' => 'bar'],
+                ['foo' => ['bar']],
+                ['foo' => 'bar'],
+            ],
+
+            // data set #9
+            // Associative, Associative
+            [
+                ['a' => 'K', 'b' => 'K', 'c' => 'L'],
+                ['a' => 'J', 'b' => 'K'],
+                ['a' => 'K', 'c' => 'L'],
+            ],
+            // Associative, Indexed
+            [
+                ['a' => 'J', 'b' => 'K', 'L'],
+                ['a' => 'J', 'b' => 'K'],
+                ['K', 'L'],
+            ],
+            // Associative, Mixed
+            [
+                ['a' => 'J', 'b' => 'K', 'K', 'c' => 'L'],
+                ['a' => 'J', 'b' => 'K'],
+                ['K', 'c' => 'L'],
+            ],
+
+            // data set #12
+            // Indexed, Associative
+            [
+                ['J', 'K', 'a' => 'K', 'c' => 'L'],
+                ['J', 'K'],
+                ['a' => 'K', 'c' => 'L'],
+            ],
+            // Indexed, Indexed
+            [
+                ['J', 'K', 'L'],
+                ['J', 'K'],
+                ['K', 'L'],
+            ],
+            // Indexed, Mixed
+            [
+                ['K', 'K', 'c' => 'L'],
+                ['J', 'K'],
+                ['K', 'c' => 'L'],
+            ],
+
+            // data set #15
+            // Mixed, Associative
+            [
+                ['a' => 'K', 'K', 'c' => 'L'],
+                ['a' => 'J', 'K'],
+                ['a' => 'K', 'c' => 'L'],
+            ],
+            // Mixed, Indexed
+            [
+                ['a' => 'J', 'K', 'L'],
+                ['a' => 'J', 'K'],
+                ['J', 'L'],
+            ],
+            // Mixed, Mixed
+            [
+                ['a' => 'K', 'L'],
+                ['a' => 'J', 'K'],
+                ['a' => 'K', 'L'],
+            ],
+
+            // Bug #3141
+            [
+                ['servers' => [['1.1.1.1', 4730], ['2.2.2.2', 4730]]],
+                ['servers' => [['1.1.1.1', 4730]]],
+                ['servers' => [['2.2.2.2', 4730]]],
+            ],
+        ];
+    }
+
+    /**
+     *
+     * @test
+     * @dataProvider provider_merge
+     */
+    public function test_merge($expected, $array1, $array2)
+    {
+        $this->assertSame(
+            $expected,
+            Arr::merge($array1, $array2)
+        );
+    }
+
+    /**
+     * Provides test data for test_path()
+     *
+     * @return array
+     */
+    public function provider_path()
+    {
+        $array = [
+            'foobar' => ['definition' => 'lost'],
+            'kohana' => 'awesome',
+            'users' => [
+                1 => ['name' => 'matt'],
+                2 => ['name' => 'john', 'interests' => ['hocky' => ['length' => 2], 'football' => []]],
+                3 => 'frank', // Issue #3194
+            ],
+            'object' => new ArrayObject(['iterator' => TRUE]), // Iterable object should work exactly the same
+        ];
+
+        return [
+            // Tests returns normal values
+            [$array['foobar'], $array, 'foobar'],
+            [$array['kohana'], $array, 'kohana'],
+            [$array['foobar']['definition'], $array, 'foobar.definition'],
+            // Custom delimiters
+            [$array['foobar']['definition'], $array, 'foobar/definition', NULL, '/'],
+            // We should be able to use NULL as a default, returned if the key DNX
+            [NULL, $array, 'foobar.alternatives', NULL],
+            [NULL, $array, 'kohana.alternatives', NULL],
+            // Try using a string as a default
+            ['nothing', $array, 'kohana.alternatives', 'nothing'],
+            // Make sure you can use arrays as defaults
+            [['far', 'wide'], $array, 'cheese.origins', ['far', 'wide']],
+            // Ensures path() casts ints to actual integers for keys
+            [$array['users'][1]['name'], $array, 'users.1.name'],
+            // Test that a wildcard returns the entire array at that "level"
+            [$array['users'], $array, 'users.*'],
+            // Now we check that keys after a wilcard will be processed
+            [[0 => [0 => 2]], $array, 'users.*.interests.*.length'],
+            // See what happens when it can't dig any deeper from a wildcard
+            [NULL, $array, 'users.*.fans'],
+            // Starting wildcards, issue #3269
+            [['matt', 'john'], $array['users'], '*.name'],
+            // Path as array, issue #3260
+            [$array['users'][2]['name'], $array, ['users', 2, 'name']],
+            [$array['object']['iterator'], $array, 'object.iterator'],
+        ];
+    }
+
+    /**
+     * Tests \Leafpoda\Utils\Arr::path()
+     *
+     * @test
+     * @dataProvider provider_path
+     * @param string $path The path to follow
+     * @param mixed $default The value to return if dnx
+     * @param boolean $expected The expected value
+     * @param string $delimiter The path delimiter
+     */
+    public function test_path($expected, $array, $path, $default = NULL, $delimiter = NULL)
+    {
+        $this->assertSame(
+            $expected,
+            Arr::path($array, $path, $default, $delimiter)
+        );
+    }
+
+    /**
+     * Provides test data for test_path()
+     *
+     * @return array
+     */
+    public function provider_set_path()
+    {
+        return [
+            // Tests returns normal values
+            [['foo' => 'bar'], [], 'foo', 'bar'],
+            [['kohana' => ['is' => 'awesome']], [], 'kohana.is', 'awesome'],
+            [['kohana' => ['is' => 'cool', 'and' => 'slow']],
+                ['kohana' => ['is' => 'cool']], 'kohana.and', 'slow'],
+            // Custom delimiters
+            [['kohana' => ['is' => 'awesome']], [], 'kohana/is', 'awesome', '/'],
+            // Ensures set_path() casts ints to actual integers for keys
+            [['foo' => ['bar']], ['foo' => ['test']], 'foo.0', 'bar'],
+            // Tests if it allows arrays
+            [['kohana' => ['is' => 'awesome']], [], ['kohana', 'is'], 'awesome'],
+        ];
+    }
+
+    /**
+     * Tests \Leafpoda\Utils\Arr::path()
+     *
+     * @test
+     * @dataProvider provider_set_path
+     * @param string $path The path to follow
+     * @param boolean $expected The expected value
+     * @param string $delimiter The path delimiter
+     */
+    public function test_set_path($expected, $array, $path, $value, $delimiter = NULL)
+    {
+        Arr::set_path($array, $path, $value, $delimiter);
+
+        $this->assertSame($expected, $array);
+    }
+
+    /**
+     * Provides test data for test_range()
+     *
+     * @return array
+     */
+    public function provider_range()
+    {
+        return [
+            [1, 2],
+            [1, 100],
+            [25, 10],
+        ];
+    }
+
+    /**
+     * Tests \Leafpoda\Utils\Arr::range()
+     *
+     * @dataProvider provider_range
+     * @param integer $step The step between each value in the array
+     * @param integer $max The max value of the range (inclusive)
+     */
+    public function test_range($step, $max)
+    {
+        $range = Arr::range($step, $max);
+
+        $this->assertSame((int)floor($max / $step), count($range));
+
+        $current = $step;
+
+        foreach ($range as $key => $value) {
+            $this->assertSame($key, $value);
+            $this->assertSame($current, $key);
+            $this->assertLessThanOrEqual($max, $key);
+            $current += $step;
         }
     }
 
     /**
-     * Provides test data for test_formatted_time()
+     * Provides test data for test_unshift()
      *
      * @return array
      */
-    public function provider_formatted_time()
+    public function provider_unshift()
     {
         return [
-            // Test the default format
-            ['2010-04-16 17:00:00', '5:00PM 16th April 2010'],
-            // Now we use our own format
-            // Binary date!
-            ['01/01/2010 01:00', '1AM 1st January 2010', 'd/m/Y H:i'],
-            // Timezones (see #3902)
-            ['2011-04-01 01:23:45 Antarctica/South_Pole', '2011-04-01 01:23:45', 'Y-m-d H:i:s e', 'Antarctica/South_Pole'],
-            ['2011-04-01 01:23:45 Antarctica/South_Pole', '2011-03-31 14:23:45 Europe/Paris', 'Y-m-d H:i:s e', 'Antarctica/South_Pole'],
-            ['2011-04-01 01:23:45 Antarctica/South_Pole', '@1301574225', 'Y-m-d H:i:s e', 'Antarctica/South_Pole'],
+            [['one' => '1', 'two' => '2',], 'zero', '0'],
+            [['step 1', 'step 2', 'step 3'], 'step 0', 'wow']
         ];
     }
 
     /**
-     * Tests \Leafpoda\Utils\Date::formatted_time()
+     * Tests \Leafpoda\Utils\Arr::unshift()
      *
      * @test
-     * @dataProvider provider_formatted_time
-     * @covers       \Leafpoda\Utils\Date::formatted_time
-     * @ticket 3035 3902
-     * @param string $expected Expected output
-     * @param string|integer $datetime_str The datetime timestamp / string
-     * @param string|null $timestamp_format The output format
-     * @param string|null $timezone The timezone identifier
+     * @dataProvider provider_unshift
+     * @param array $array
+     * @param string $key
+     * @param mixed $value
      */
-    public function test_formatted_time($expected, $datetime_str, $timestamp_format = NULL, $timezone = NULL)
+    public function test_unshift(array $array, $key, $value)
     {
-        $timestamp = Date::formatted_time($datetime_str, $timestamp_format, $timezone);
+        $original = $array;
 
-        $this->assertSame($expected, $timestamp);
+        Arr::unshift($array, $key, $value);
+
+        $this->assertNotSame($original, $array);
+        $this->assertSame(count($original) + 1, count($array));
+        $this->assertArrayHasKey($key, $array);
+
+        $this->assertSame($value, reset($array));
+        $this->assertSame(key($array), $key);
     }
 
     /**
-     * Provider for test_months()
+     * Provies test data for test_overwrite
      *
-     * @return array Test data
+     * @return array Test Data
      */
-    public function provider_months()
+    public function provider_overwrite()
     {
         return [
             [
-                [
-                    1 => "1",
-                    2 => "2",
-                    3 => "3",
-                    4 => "4",
-                    5 => "5",
-                    6 => "6",
-                    7 => "7",
-                    8 => "8",
-                    9 => "9",
-                    10 => "10",
-                    11 => "11",
-                    12 => "12"
-                ],
-                NULL
+                ['name' => 'Henry', 'mood' => 'tired', 'food' => 'waffles', 'sport' => 'checkers'],
+                ['name' => 'John', 'mood' => 'bored', 'food' => 'bacon', 'sport' => 'checkers'],
+                ['name' => 'Matt', 'mood' => 'tired', 'food' => 'waffles'],
+                ['name' => 'Henry', 'age' => 18,],
             ],
-            [
-                [
-                    1 => "1",
-                    2 => "2",
-                    3 => "3",
-                    4 => "4",
-                    5 => "5",
-                    6 => "6",
-                    7 => "7",
-                    8 => "8",
-                    9 => "9",
-                    10 => "10",
-                    11 => "11",
-                    12 => "12"
-                ],
-                'Guinness'
-            ],
-            [
-                [
-                    1 => "January",
-                    2 => "February",
-                    3 => "March",
-                    4 => "April",
-                    5 => "May",
-                    6 => "June",
-                    7 => "July",
-                    8 => "August",
-                    9 => "September",
-                    10 => "October",
-                    11 => "November",
-                    12 => "December"
-                ],
-                Date::MONTHS_LONG
-            ],
-            [
-                [
-                    1 => "Jan",
-                    2 => "Feb",
-                    3 => "Mar",
-                    4 => "Apr",
-                    5 => "May",
-                    6 => "Jun",
-                    7 => "Jul",
-                    8 => "Aug",
-                    9 => "Sep",
-                    10 => "Oct",
-                    11 => "Nov",
-                    12 => "Dec"
-                ],
-                Date::MONTHS_SHORT
-            ]
-
         ];
     }
 
     /**
-     * \Leafpoda\Utils\Date::MINUTEs() should allow the user to specify different format types, defaulting
-     * to a mirrored month number => month number array if format is NULL or unrecognised
      *
      * @test
-     * @dataProvider provider_months
-     * @covers       \Leafpoda\Utils\Date::MINUTEs
+     * @dataProvider provider_overwrite
      */
-    public function test_months($expected, $format)
+    public function test_overwrite($expected, $arr1, $arr2, $arr3 = [], $arr4 = [])
     {
-        $months = Date::MINUTEs($format);
-
-        $this->assertSame($expected, $months);
+        $this->assertSame(
+            $expected,
+            Arr::overwrite($arr1, $arr2, $arr3, $arr4)
+        );
     }
 
     /**
-     * Provides test data for test_span()
+     * Provides test data for test_map
      *
-     * @return array
+     * @return array Test Data
      */
-    public function provider_span()
+    public function provider_map()
     {
-        $time = time();
         return [
-            // Test that it must specify an output format
+            ['strip_tags', ['<p>foobar</p>'], NULL, ['foobar']],
+            ['strip_tags', [['<p>foobar</p>'], ['<p>foobar</p>']], NULL, [['foobar'], ['foobar']]],
             [
-                $time,
-                $time,
-                '',
-                FALSE
-            ],
-            // Test that providing only one output just returns that output
-            [
-                $time - 30,
-                $time,
-                'seconds',
-                30
-            ],
-            // Random tests
-            [
-                $time - 30,
-                $time,
-                'years,months,weeks,days,hours,minutes,seconds',
-                ['years' => 0, 'months' => 0, 'weeks' => 0, 'days' => 0, 'hours' => 0, 'minutes' => 0, 'seconds' => 30],
-            ],
-            [
-                $time - (60 * 60 * 24 * 782) + (60 * 25),
-                $time,
-                'years,months,weeks,days,hours,minutes,seconds',
-                ['years' => 2, 'months' => 1, 'weeks' => 3, 'days' => 0, 'hours' => 1, 'minutes' => 28, 'seconds' => 24],
-            ],
-            // Should be able to compare with the future & that it only uses formats specified
-            [
-                $time + (60 * 60 * 24 * 15) + (60 * 5),
-                $time,
-                'weeks,days,hours,minutes,seconds',
-                ['weeks' => 2, 'days' => 1, 'hours' => 0, 'minutes' => 5, 'seconds' => 0],
-            ],
-            [
-                // Add a bit of extra time to account for phpunit processing
-                $time + (14 * 31 * 24 * 60 * 60) + (79 * 80),
+                'strip_tags',
+                [
+                    'foo' => '<p>foobar</p>',
+                    'bar' => '<p>foobar</p>',
+                ],
                 NULL,
-                'months,years',
-                ['months' => 2, 'years' => 1],
+                [
+                    'foo' => 'foobar',
+                    'bar' => 'foobar',
+                ],
+            ],
+            [
+                'strip_tags',
+                [
+                    'foo' => '<p>foobar</p>',
+                    'bar' => '<p>foobar</p>',
+                ],
+                ['foo'],
+                [
+                    'foo' => 'foobar',
+                    'bar' => '<p>foobar</p>',
+                ],
+            ],
+            [
+                [
+                    'strip_tags',
+                    'trim',
+                ],
+                [
+                    'foo' => '<p>foobar </p>',
+                    'bar' => '<p>foobar</p>',
+                ],
+                NULL,
+                [
+                    'foo' => 'foobar',
+                    'bar' => 'foobar',
+                ],
+            ],
+            [
+                'strip_tags',
+                [
+                    [
+                        'foo' => '<p>foobar</p>',
+                        'bar' => '<p>foobar</p>',
+                    ],
+                ],
+                ['foo'],
+                [
+                    [
+                        'foo' => 'foobar',
+                        'bar' => '<p>foobar</p>',
+                    ],
+                ],
             ],
         ];
     }
 
     /**
-     * Tests Date::span()
      *
      * @test
-     * @covers       \Leafpoda\Utils\Date::span
-     * @dataProvider provider_span
-     * @param integer $time1 Time in the past
-     * @param integer $time2 Time to compare against
-     * @param string $output Units to output
-     * @param array $expected Array of $outputs => values
+     * @dataProvider provider_map
      */
-    public function test_span($time1, $time2, $output, $expected)
+    public function test_map($method, $source, $keys, $expected)
     {
         $this->assertSame(
             $expected,
-            Date::span($time1, $time2, $output)
+            Arr::map($method, $source, $keys)
         );
     }
 
     /**
-     * Provides test data to test_fuzzy_span
-     *
-     * This test data is provided on the assumption that it
-     * won't take phpunit more than 30 seconds to get the
-     * data from this provider to the test... ;)
+     * Provides test data for test_flatten
      *
      * @return array Test Data
      */
-    public function provider_fuzzy_span()
+    public function provider_flatten()
     {
-        $now = time();
-
         return [
-            ['moments ago', $now - 30, $now],
-            ['in moments', $now + 30, $now],
-
-            ['a few minutes ago', $now - 10 * 60, $now],
-            ['in a few minutes', $now + 10 * 60, $now],
-
-            ['less than an hour ago', $now - 45 * 60, $now],
-            ['in less than an hour', $now + 45 * 60, $now],
-
-            ['a couple of hours ago', $now - 2 * 60 * 60, $now],
-            ['in a couple of hours', $now + 2 * 60 * 60, $now],
-
-            ['less than a day ago', $now - 12 * 60 * 60, $now],
-            ['in less than a day', $now + 12 * 60 * 60, $now],
-
-            ['about a day ago', $now - 30 * 60 * 60, $now],
-            ['in about a day', $now + 30 * 60 * 60, $now],
-
-            ['a couple of days ago', $now - 3 * 24 * 60 * 60, $now],
-            ['in a couple of days', $now + 3 * 24 * 60 * 60, $now],
-
-            ['less than a week ago', $now - 5 * 24 * 60 * 60, $now],
-            ['in less than a week', $now + 5 * 24 * 60 * 60, $now],
-
-            ['about a week ago', $now - 9 * 24 * 60 * 60, $now],
-            ['in about a week', $now + 9 * 24 * 60 * 60, $now],
-
-            ['less than a month ago', $now - 20 * 24 * 60 * 60, $now],
-            ['in less than a month', $now + 20 * 24 * 60 * 60, $now],
-
-            ['about a month ago', $now - 40 * 24 * 60 * 60, $now],
-            ['in about a month', $now + 40 * 24 * 60 * 60, $now],
-
-            ['a couple of months ago', $now - 3 * 30 * 24 * 60 * 60, $now],
-            ['in a couple of months', $now + 3 * 30 * 24 * 60 * 60, $now],
-
-            ['less than a year ago', $now - 7 * 31 * 24 * 60 * 60, $now],
-            ['in less than a year', $now + 7 * 31 * 24 * 60 * 60, $now],
-
-            ['about a year ago', $now - 18 * 31 * 24 * 60 * 60, $now],
-            ['in about a year', $now + 18 * 31 * 24 * 60 * 60, $now],
-
-            ['a couple of years ago', $now - 3 * 12 * 31 * 24 * 60 * 60, $now],
-            ['in a couple of years', $now + 3 * 12 * 31 * 24 * 60 * 60, $now],
-
-            ['a few years ago', $now - 5 * 12 * 31 * 24 * 60 * 60, $now],
-            ['in a few years', $now + 5 * 12 * 31 * 24 * 60 * 60, $now],
-
-            ['about a decade ago', $now - 11 * 12 * 31 * 24 * 60 * 60, $now],
-            ['in about a decade', $now + 11 * 12 * 31 * 24 * 60 * 60, $now],
-
-            ['a couple of decades ago', $now - 20 * 12 * 31 * 24 * 60 * 60, $now],
-            ['in a couple of decades', $now + 20 * 12 * 31 * 24 * 60 * 60, $now],
-
-            ['several decades ago', $now - 50 * 12 * 31 * 24 * 60 * 60, $now],
-            ['in several decades', $now + 50 * 12 * 31 * 24 * 60 * 60, $now],
-
-            ['a long time ago', $now - pow(10, 10), $now],
-            ['in a long time', $now + pow(10, 10), $now],
+            [['set' => ['one' => 'something'], 'two' => 'other'], ['one' => 'something', 'two' => 'other']],
         ];
     }
 
     /**
-     * Test of Date::fuzy_span()
      *
      * @test
-     * @dataProvider provider_fuzzy_span
-     * @param string $expected Expected output
-     * @param integer $timestamp Timestamp to use
-     * @param integer $local_timestamp The local timestamp to use
+     * @dataProvider provider_flatten
      */
-    public function test_fuzzy_span($expected, $timestamp, $local_timestamp)
+    public function test_flatten($source, $expected)
     {
         $this->assertSame(
             $expected,
-            Date::fuzzy_span($timestamp, $local_timestamp)
+            Arr::flatten($source)
         );
-    }
-
-    /**
-     * Provides test data for test_years()
-     *
-     * @return array Test Data
-     */
-    public function provider_years()
-    {
-        return [
-            [
-                [
-                    2005 => '2005',
-                    2006 => '2006',
-                    2007 => '2007',
-                    2008 => '2008',
-                    2009 => '2009',
-                    2010 => '2010',
-                    2011 => '2011',
-                    2012 => '2012',
-                    2013 => '2013',
-                    2014 => '2014',
-                    2015 => '2015',
-                ],
-                2005,
-                2015
-            ],
-        ];
-    }
-
-    /**
-     * Tests Data::years()
-     *
-     * @test
-     * @dataProvider provider_years
-     */
-    public function test_years($expected, $start = FALSE, $end = FALSE)
-    {
-        $this->assertSame(
-            $expected,
-            Date::YEARs($start, $end)
-        );
-    }
-
-    public function provider_hours()
-    {
-        return [
-            [
-                [
-                    1 => '1',
-                    2 => '2',
-                    3 => '3',
-                    4 => '4',
-                    5 => '5',
-                    6 => '6',
-                    7 => '7',
-                    8 => '8',
-                    9 => '9',
-                    10 => '10',
-                    11 => '11',
-                    12 => '12',
-                ],
-            ],
-        ];
-    }
-
-    /**
-     * Test for \Leafpoda\Utils\Date::HOURs
-     *
-     * @test
-     * @dataProvider provider_hours
-     */
-    public function test_hours($expected, $step = 1, $long = FALSE, $start = NULL)
-    {
-        $this->assertSame(
-            $expected,
-            Date::HOURs($step, $long, $start)
-        );
-    }
-
-    /**
-     * Provides test data for test_seconds
-     *
-     * @return array Test data
-     */
-    public function provider_seconds()
-    {
-        return [
-            [
-                // Thank god for var_export()
-                [
-                    0 => '00', 1 => '01', 2 => '02', 3 => '03', 4 => '04',
-                    5 => '05', 6 => '06', 7 => '07', 8 => '08', 9 => '09',
-                    10 => '10', 11 => '11', 12 => '12', 13 => '13', 14 => '14',
-                    15 => '15', 16 => '16', 17 => '17', 18 => '18', 19 => '19',
-                    20 => '20', 21 => '21', 22 => '22', 23 => '23', 24 => '24',
-                    25 => '25', 26 => '26', 27 => '27', 28 => '28', 29 => '29',
-                    30 => '30', 31 => '31', 32 => '32', 33 => '33', 34 => '34',
-                    35 => '35', 36 => '36', 37 => '37', 38 => '38', 39 => '39',
-                    40 => '40', 41 => '41', 42 => '42', 43 => '43', 44 => '44',
-                    45 => '45', 46 => '46', 47 => '47', 48 => '48', 49 => '49',
-                    50 => '50', 51 => '51', 52 => '52', 53 => '53', 54 => '54',
-                    55 => '55', 56 => '56', 57 => '57', 58 => '58', 59 => '59',
-                ],
-                1,
-                0,
-                60
-            ],
-        ];
-    }
-
-    /**
-     *
-     * @test
-     * @dataProvider provider_seconds
-     * @covers       \Leafpoda\Utils\Date::seconds
-     */
-    public function test_seconds($expected, $step = 1, $start = 0, $end = 60)
-    {
-        $this->assertSame(
-            $expected,
-            Date::seconds($step, $start, $end)
-        );
-    }
-
-    /**
-     * Provides test data for test_minutes
-     *
-     * @return array Test data
-     */
-    public function provider_minutes()
-    {
-        return [
-            [
-                [
-                    0 => '00', 5 => '05', 10 => '10',
-                    15 => '15', 20 => '20', 25 => '25',
-                    30 => '30', 35 => '35', 40 => '40',
-                    45 => '45', 50 => '50', 55 => '55',
-                ],
-                5,
-            ],
-        ];
-    }
-
-    /**
-     *
-     * @test
-     * @dataProvider provider_minutes
-     */
-    public function test_minutes($expected, $step)
-    {
-        $this->assertSame(
-            $expected,
-            Date::MINUTEs($step)
-        );
-    }
-
-    /**
-     * This tests that the minutes helper defaults to using a $step of 5
-     * and thus returns an array of 5 minute itervals
-     *
-     * @test
-     * @covers \Leafpoda\Utils\Date::MINUTEs
-     */
-    public function test_minutes_defaults_to_using_step_of5()
-    {
-        $minutes = [
-            0 => '00', 5 => '05', 10 => '10',
-            15 => '15', 20 => '20', 25 => '25',
-            30 => '30', 35 => '35', 40 => '40',
-            45 => '45', 50 => '50', 55 => '55',
-        ];
-
-        $this->assertSame(
-            $minutes,
-            Date::MINUTEs()
-        );
-    }
-
-    /**
-     * Provids for test_unix2dos
-     *
-     * @return array Test Data
-     */
-    public function provider_unix2dos()
-    {
-        return [
-            [
-                1024341746,
-                1281786936
-            ],
-            [
-                2162688,
-                315554400
-            ]
-        ];
-    }
-
-    /**
-     * Test Date::unix2dos()
-     *
-     * You should always pass a timestamp as otherwise the current
-     * date/time would be used and that's oviously variable
-     *
-     * Geert seems to be the only person who knows how unix2dos() works
-     * so we just throw in some random values and see what happens
-     *
-     * @test
-     * @dataProvider provider_unix2dos
-     * @covers       \Leafpoda\Utils\Date::unix2dos
-     * @param integer $expected Expected output
-     * @param integer $timestamp Input timestamp
-     */
-    public function test_unix2dos($expected, $timestamp)
-    {
-        $this->assertSame($expected, Date::unix2dos($timestamp));
-    }
-
-    /**
-     * Provides test data for test_dos2unix
-     *
-     * @return array Test data
-     */
-    public function provider_dos2unix()
-    {
-        return [
-            [
-                1281786936,
-                1024341746,
-            ],
-            [
-                315554400,
-                2162688,
-            ],
-        ];
-    }
-
-    /**
-     * Tests Date::dos2unix
-     *
-     * @test
-     * @dataProvider provider_dos2unix
-     * @param integer $expected Expected output
-     * @param integer $timestamp Input timestamp
-     */
-    public function test_dos2unix($expected, $timestamp)
-    {
-        $this->assertEquals($expected, Date::dos2unix($timestamp));
     }
 }

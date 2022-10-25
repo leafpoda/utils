@@ -1,11 +1,10 @@
 <?php
-
 namespace Leafpoda\Utils\Tests;
 
+use Leafpoda\Utils\Date;
 use PHPUnit\Framework\TestCase;
 
-class DateTest extends TestCase
-{
+class DateTest extends TestCase{
     protected $_original_timezone = NULL;
     protected $default_locale;
 
@@ -17,6 +16,7 @@ class DateTest extends TestCase
         // @codingStandardsIgnoreEnd
     {
         parent::setUp();
+
         $this->_original_timezone = date_default_timezone_get();
         $this->default_locale = setlocale(LC_ALL, 0);
 
@@ -62,7 +62,7 @@ class DateTest extends TestCase
      */
     public function test_offset($expected, $remote, $local, $now = NULL)
     {
-        $this->assertSame($expected, \Leafpoda\Utils\Date::offset($remote, $local, $now));
+        $this->assertSame($expected, Date::offset($remote, $local, $now));
     }
 
     /**
@@ -361,7 +361,7 @@ class DateTest extends TestCase
      */
     public function test_months($expected, $format)
     {
-        $months = \Leafpoda\Utils\Date::MINUTEs($format);
+        $months = \Leafpoda\Utils\Date::MONTHs($format);
 
         $this->assertSame($expected, $months);
     }
@@ -527,7 +527,7 @@ class DateTest extends TestCase
     {
         $this->assertSame(
             $expected,
-            \Leafpoda\Utils\Date::fuzzy_span($timestamp, $local_timestamp)
+            Date::fuzzy_span($timestamp, $local_timestamp)
         );
     }
 
@@ -650,7 +650,7 @@ class DateTest extends TestCase
     {
         $this->assertSame(
             $expected,
-            \Leafpoda\Utils\Date::seconds($step, $start, $end)
+            Date::seconds($step, $start, $end)
         );
     }
 
@@ -683,7 +683,7 @@ class DateTest extends TestCase
     {
         $this->assertSame(
             $expected,
-            \Leafpoda\Utils\Date::MINUTEs($step)
+            Date::MINUTEs($step)
         );
     }
 
@@ -705,7 +705,7 @@ class DateTest extends TestCase
 
         $this->assertSame(
             $minutes,
-            \Leafpoda\Utils\Date::MINUTEs()
+            Date::MINUTEs()
         );
     }
 
@@ -745,7 +745,7 @@ class DateTest extends TestCase
      */
     public function test_unix2dos($expected, $timestamp)
     {
-        $this->assertSame($expected, \Leafpoda\Utils\Date::unix2dos($timestamp));
+        $this->assertSame($expected, Date::unix2dos($timestamp));
     }
 
     /**
@@ -777,6 +777,6 @@ class DateTest extends TestCase
      */
     public function test_dos2unix($expected, $timestamp)
     {
-        $this->assertEquals($expected, \Leafpoda\Utils\Date::dos2unix($timestamp));
+        $this->assertEquals($expected, Date::dos2unix($timestamp));
     }
 }
